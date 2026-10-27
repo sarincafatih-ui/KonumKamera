@@ -21,11 +21,19 @@
             android:textSize="15sp" />
     </com.google.android.material.card.MaterialCardView>
 
+    <TextView
+        android:id="@+id/tvSeries"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:textSize="15sp"
+        android:textStyle="bold" />
+
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginTop="12dp"
-        android:layout_marginBottom="12dp"
+        android:layout_marginTop="10dp"
+        android:layout_marginBottom="10dp"
         android:layout_weight="1">
 
         <TextView
@@ -43,6 +51,32 @@
             android:contentDescription="@string/app_name"
             android:scaleType="fitCenter" />
     </FrameLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="8dp"
+        android:orientation="horizontal">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnReset"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="0dp"
+            android:layout_height="56dp"
+            android:layout_marginEnd="8dp"
+            android:layout_weight="1"
+            android:enabled="false"
+            android:text="@string/reset" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnKml"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="0dp"
+            android:layout_height="56dp"
+            android:layout_weight="1"
+            android:enabled="false"
+            android:text="@string/make_kml_short" />
+    </LinearLayout>
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -65,7 +99,7 @@
             android:layout_height="64dp"
             android:layout_weight="2"
             android:text="@string/take_photo"
-            android:textSize="17sp"
+            android:textSize="16sp"
             app:icon="@android:drawable/ic_menu_camera" />
     </LinearLayout>
 </LinearLayout>
