@@ -1,0 +1,14 @@
+<resources>
+    <string name="app_name">Konum Kamera</string>
+    <string name="take_photo">Fotoğraf Çek</string>
+    <string name="share">Paylaş</string>
+    <string name="searching_gps">GPS sinyali aranıyor…\nAçık alanda daha hızlı bulunur.</string>
+    <string name="no_permission">Konum izni verilmedi. Ayarlardan izin verin.</string>
+    <string name="gps_off">GPS kapalı. Lütfen konumu açın.</string>
+    <string name="no_location_yet">Henüz konum alınamadı, biraz bekleyin.</string>
+    <string name="no_camera">Kamera uygulaması bulunamadı.</string>
+    <string name="saved">Fotoğraf galeriye kaydedildi (Pictures/KonumKamera)</string>
+    <string name="save_error">Fotoğraf kaydedilemedi.</string>
+    <string name="cancelled">Fotoğraf çekilmedi.</string>
+    <string name="preview_hint">Çektiğiniz fotoğraf burada görünecek</string>
+</resources>
