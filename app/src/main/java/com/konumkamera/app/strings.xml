@@ -1,0 +1,47 @@
+<resources>
+    <string name="app_name">Konum Kamera</string>
+    <string name="take_photo">Fotoğraf Çek</string>
+    <string name="take_photo_no">Fotoğraf Çek (No %1$d)</string>
+    <string name="share">Paylaş</string>
+    <string name="ok">Tamam</string>
+    <string name="cancel">Vazgeç</string>
+    <string name="searching_gps">GPS sinyali aranıyor…\nAçık alanda daha hızlı bulunur.</string>
+    <string name="no_permission">Konum izni verilmedi. Ayarlardan izin verin.</string>
+    <string name="gps_off">GPS kapalı. Lütfen konumu açın.</string>
+    <string name="no_location_yet">Henüz konum alınamadı, biraz bekleyin.</string>
+    <string name="no_camera">Kamera uygulaması bulunamadı.</string>
+    <string name="saved_no">%1$d numaralı fotoğraf kaydedildi</string>
+    <string name="save_error">Fotoğraf kaydedilemedi.</string>
+    <string name="cancelled">Fotoğraf çekilmedi.</string>
+    <string name="preview_hint">Çektiğiniz fotoğraf burada görünecek</string>
+
+    <string name="series_empty">Seri boş (en fazla %1$d fotoğraf)</string>
+    <string name="series_status">Seri: %1$d / %2$d fotoğraf\nNoktalar: %3$s</string>
+    <string name="series_full_btn">Seri doldu (10/10)</string>
+    <string name="series_full_title">Seri doldu</string>
+    <string name="series_full_msg">10 fotoğraf tamamlandı. KML / KMZ yapın ya da yeni seri başlatın.</string>
+
+    <string name="make_kml">KML (%1$d)</string>
+    <string name="make_kmz">KMZ 📷 (%1$d)</string>
+    <string name="make_kmz_short">KMZ Yap</string>
+    <string name="make_kml_short">KML Yap</string>
+    <string name="kml_empty">Seride henüz nokta yok.</string>
+    <string name="kml_error">KML kaydedilemedi.</string>
+    <string name="kml_done_title">KML hazır</string>
+    <string name="kmz_done_title">KMZ hazır</string>
+    <string name="kml_done_msg">%1$d nokta kaydedildi (sadece konum):\nİndirilenler/KonumKamera/%2$s</string>
+    <string name="kmz_working">KMZ hazırlanıyor, fotoğraflar ekleniyor…</string>
+    <string name="kmz_done_msg">%1$d nokta, %2$d fotoğraf kaydedildi.\nNoktaya tıklayınca fotoğraf açılır.\n\nİndirilenler/KonumKamera/%3$s</string>
+
+    <string name="acc_warn_title">Konum hassasiyeti düşük</string>
+    <string name="acc_warn_msg">GPS hassasiyeti %1$s (sınır: %2$d m).\n\nAçık alanda birkaç saniye bekleyip tekrar çekmeniz önerilir.\n\nTamam derseniz fotoğraf bu konumla kaydedilir.</string>
+    <string name="acc_unknown">bilinmiyor</string>
+    <string name="retake">Tekrar Çek</string>
+
+    <string name="reset">Yeni Seri</string>
+    <string name="reset_title">Yeni seri başlatılsın mı?</string>
+    <string name="reset_msg">Numaralar 1\'den yeniden başlar. Çekilen fotoğraflar ve KML dosyaları silinmez.</string>
+    <string name="reset_yes">Yeni Seri</string>
+    <string name="reset_new_series">Yeni Seri</string>
+    <string name="reset_done">Yeni seri başladı.</string>
+</resources>

@@ -40,8 +40,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.text.SimpleDateFormat
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import java.util.Date
 import java.util.Locale
 import kotlin.math.abs
@@ -59,17 +62,20 @@ class MainActivity : AppCompatActivity() {
         const val MAX_PHOTOS = 10
         const val PREFS = "seri"
         const val KEY_POINTS = "noktalar"
+        const val MAX_ACCURACY_M = 10f
     }
 
     /** Seride hafızada tutulan bir nokta. */
     data class Point(
         val no: Int, val lat: Double, val lon: Double,
-        val alt: Double?, val acc: Float?, val time: Long, val photo: String
+        val alt: Double?, val acc: Float?, val time: Long, val photo: String,
+        val uri: String? = null
     ) {
         fun toJson() = JSONObject().apply {
             put("no", no); put("lat", lat); put("lon", lon)
             alt?.let { put("alt", it) }; acc?.let { put("acc", it.toDouble()) }
             put("time", time); put("photo", photo)
+            uri?.let { put("uri", it) }
         }
 
         companion object {
@@ -77,7 +83,8 @@ class MainActivity : AppCompatActivity() {
                 o.getInt("no"), o.getDouble("lat"), o.getDouble("lon"),
                 if (o.has("alt")) o.getDouble("alt") else null,
                 if (o.has("acc")) o.getDouble("acc").toFloat() else null,
-                o.getLong("time"), o.optString("photo")
+                o.getLong("time"), o.optString("photo"),
+                o.optString("uri").ifEmpty { null }
             )
         }
     }
@@ -103,7 +110,12 @@ class MainActivity : AppCompatActivity() {
         registerForActivityResult(ActivityResultContracts.TakePicture()) { success ->
             val file = pendingPhotoFile
             if (success && file != null && file.length() > 0) {
-                processPhoto(file, bestLocation)
+                val loc = bestLocation
+                if (loc != null && loc.hasAccuracy() && loc.accuracy <= MAX_ACCURACY_M) {
+                    processPhoto(file, loc)            // hassasiyet iyi: direkt kaydet
+                } else {
+                    showAccuracyWarning(file, loc)     // 10 m'den kötü: sor
+                }
             } else {
                 toast(getString(R.string.cancelled))
             }
@@ -130,7 +142,8 @@ class MainActivity : AppCompatActivity() {
 
         b.btnCapture.setOnClickListener { capture() }
         b.btnShare.setOnClickListener { sharePhoto() }
-        b.btnKml.setOnClickListener { makeKml() }
+        b.btnKml.setOnClickListener { makeExport(false) }
+        b.btnKmz.setOnClickListener { makeExport(true) }
         b.btnReset.setOnClickListener { confirmReset() }
 
         requestNeededPermissions()
@@ -173,6 +186,8 @@ class MainActivity : AppCompatActivity() {
         else getString(R.string.series_status, n, MAX_PHOTOS, points.joinToString("  ") { it.no.toString() })
         b.btnKml.text = getString(R.string.make_kml, n)
         b.btnKml.isEnabled = n > 0
+        b.btnKmz.text = getString(R.string.make_kmz, n)
+        b.btnKmz.isEnabled = n > 0
         b.btnReset.isEnabled = n > 0
         b.btnCapture.text = if (n >= MAX_PHOTOS) getString(R.string.series_full_btn)
         else getString(R.string.take_photo_no, n + 1)
@@ -286,14 +301,30 @@ class MainActivity : AppCompatActivity() {
 
     // ---------- Fotoğraf ----------
 
+    /** Konum hassasiyeti 10 m'den kötüyse: Tekrar Çek ya da Tamam (yine de kaydet). */
+    private fun showAccuracyWarning(file: File, loc: Location?) {
+        val accText = if (loc != null && loc.hasAccuracy()) "±" + loc.accuracy.roundToInt() + " m"
+        else getString(R.string.acc_unknown)
+        AlertDialog.Builder(this)
+            .setTitle(R.string.acc_warn_title)
+            .setMessage(getString(R.string.acc_warn_msg, accText, MAX_ACCURACY_M.roundToInt()))
+            .setCancelable(false)
+            .setPositiveButton(R.string.ok) { _, _ -> processPhoto(file, loc) }
+            .setNegativeButton(R.string.retake) { _, _ ->
+                file.delete()
+                capture()
+            }
+            .show()
+    }
+
     private fun capture() {
         if (points.size >= MAX_PHOTOS) {
             AlertDialog.Builder(this)
                 .setTitle(R.string.series_full_title)
                 .setMessage(R.string.series_full_msg)
-                .setPositiveButton(R.string.make_kml_short) { _, _ -> makeKml() }
+                .setPositiveButton(R.string.make_kmz_short) { _, _ -> makeExport(true) }
+                .setNegativeButton(R.string.make_kml_short) { _, _ -> makeExport(false) }
                 .setNeutralButton(R.string.reset_yes) { _, _ -> confirmReset() }
-                .setNegativeButton(R.string.cancel, null)
                 .show()
             return
         }
@@ -341,7 +372,7 @@ class MainActivity : AppCompatActivity() {
                         no, location.latitude, location.longitude,
                         if (location.hasAltitude()) location.altitude else null,
                         if (location.hasAccuracy()) location.accuracy else null,
-                        date.time, result.third
+                        date.time, result.third, result.second.toString()
                     )
                     savePoints()
                 }
@@ -475,11 +506,46 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ---------- KML ----------
+    // ---------- KML / KMZ ----------
 
     private fun esc(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
-    private fun buildKml(title: String): String {
+    /** Fotoğrafın galeri adresini bulur (eski kayıtlarda dosya adından arar). */
+    private fun findPhotoUri(p: Point): Uri? {
+        p.uri?.let { return Uri.parse(it) }
+        if (p.photo.isEmpty()) return null
+        return runCatching {
+            contentResolver.query(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                arrayOf(MediaStore.Images.Media._ID),
+                MediaStore.Images.Media.DISPLAY_NAME + "=?",
+                arrayOf(p.photo), null
+            )?.use { c ->
+                if (c.moveToFirst()) Uri.withAppendedPath(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI, c.getLong(0).toString()
+                ) else null
+            }
+        }.getOrNull()
+    }
+
+    /** Fotoğrafı KMZ için küçültür (uzun kenar en fazla 1600 piksel). */
+    private fun readPhotoForKmz(uri: Uri): ByteArray? = runCatching {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        if (bounds.outWidth <= 0) return null
+        var sample = 1
+        while (max(bounds.outWidth, bounds.outHeight) / sample > 1600) sample *= 2
+        val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+        val bmp = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
+            ?: return null
+        val out = ByteArrayOutputStream()
+        bmp.compress(Bitmap.CompressFormat.JPEG, 85, out)
+        bmp.recycle()
+        out.toByteArray()
+    }.getOrNull()
+
+    /** photoFiles: nokta numarası -> KMZ içindeki fotoğraf yolu (yoksa fotoğrafsız KML). */
+    private fun buildKml(title: String, photoFiles: Map<Int, String>): String {
         val df = SimpleDateFormat("dd.MM.yyyy HH:mm:ss", trLocale)
         val iso = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US)
         val sb = StringBuilder()
@@ -490,15 +556,24 @@ class MainActivity : AppCompatActivity() {
         sb.append("<Icon><href>http://maps.google.com/mapfiles/kml/paddle/red-circle.png</href></Icon>")
         sb.append("</IconStyle><LabelStyle><scale>1.2</scale></LabelStyle></Style>\n")
         points.sortedBy { it.no }.forEach { p ->
-            val desc = StringBuilder()
-            desc.append("Tarih: ").append(df.format(Date(p.time)))
-            desc.append(String.format(Locale.US, "\nEnlem: %.6f\nBoylam: %.6f", p.lat, p.lon))
-            p.alt?.let { desc.append("\nRakım: ").append(it.roundToInt()).append(" m") }
-            p.acc?.let { desc.append("\nDoğruluk: ±").append(it.roundToInt()).append(" m") }
-            desc.append("\nFotoğraf: ").append(p.photo)
+            val info = mutableListOf<String>()
+            info += "Tarih: " + df.format(Date(p.time))
+            info += String.format(Locale.US, "Enlem: %.6f", p.lat)
+            info += String.format(Locale.US, "Boylam: %.6f", p.lon)
+            p.alt?.let { info += "Rakım: " + it.roundToInt() + " m" }
+            p.acc?.let { info += "Doğruluk: ±" + it.roundToInt() + " m" }
+            info += "Fotoğraf: " + p.photo
+
+            val html = StringBuilder()
+            photoFiles[p.no]?.let { path ->
+                html.append("<img src=\"").append(path).append("\" width=\"480\"/><br/>")
+            }
+            html.append("<b>Nokta ").append(p.no).append("</b><br/>")
+            html.append(info.joinToString("<br/>") { esc(it) })
+
             sb.append("  <Placemark>\n")
             sb.append("    <name>").append(p.no).append("</name>\n")
-            sb.append("    <description>").append(esc(desc.toString())).append("</description>\n")
+            sb.append("    <description><![CDATA[").append(html).append("]]></description>\n")
             sb.append("    <TimeStamp><when>").append(iso.format(Date(p.time))).append("</when></TimeStamp>\n")
             sb.append("    <styleUrl>#nokta</styleUrl>\n")
             sb.append("    <Point><coordinates>")
@@ -510,32 +585,66 @@ class MainActivity : AppCompatActivity() {
         return sb.toString()
     }
 
-    private fun makeKml() {
+    /** KMZ = içinde doc.kml ve fotoğraflar olan zip dosyası. */
+    private fun buildKmz(title: String): Pair<ByteArray, Int> {
+        val photos = linkedMapOf<Int, ByteArray>()
+        points.sortedBy { it.no }.forEach { p ->
+            findPhotoUri(p)?.let { readPhotoForKmz(it) }?.let { photos[p.no] = it }
+        }
+        val paths = photos.keys.associateWith { "files/" + it + ".jpg" }
+        val bos = ByteArrayOutputStream()
+        ZipOutputStream(bos).use { zip ->
+            zip.putNextEntry(ZipEntry("doc.kml"))
+            zip.write(buildKml(title, paths).toByteArray(Charsets.UTF_8))
+            zip.closeEntry()
+            photos.forEach { (no, bytes) ->
+                zip.putNextEntry(ZipEntry(paths.getValue(no)))
+                zip.write(bytes)
+                zip.closeEntry()
+            }
+        }
+        return bos.toByteArray() to photos.size
+    }
+
+    /** withPhotos = true -> fotoğraflı KMZ, false -> sadece konum KML. */
+    private fun makeExport(withPhotos: Boolean) {
         if (points.isEmpty()) { toast(getString(R.string.kml_empty)); return }
         val now = Date()
         val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(now)
-        val name = "KonumKamera_$stamp.kml"
+        val name = "KonumKamera_" + stamp + if (withPhotos) ".kmz" else ".kml"
+        val mime = if (withPhotos) "application/vnd.google-earth.kmz" else "application/vnd.google-earth.kml+xml"
         val title = "Konum Kamera " + SimpleDateFormat("dd.MM.yyyy HH:mm", trLocale).format(now)
-        val kml = buildKml(title)
+        b.btnKml.isEnabled = false
+        b.btnKmz.isEnabled = false
+        if (withPhotos) toast(getString(R.string.kmz_working))
         lifecycleScope.launch {
-            val uri = withContext(Dispatchers.IO) { runCatching { saveKml(name, kml) }.getOrNull() }
-            if (uri == null) { toast(getString(R.string.kml_error)); return@launch }
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val (bytes, photoCount) = if (withPhotos) buildKmz(title)
+                    else buildKml(title, emptyMap()).toByteArray(Charsets.UTF_8) to 0
+                    saveDownload(name, mime, bytes)?.let { it to photoCount }
+                }.getOrNull()
+            }
+            updateSeriesUi()
+            if (result == null) { toast(getString(R.string.kml_error)); return@launch }
+            val (uri, photoCount) = result
+            val msg = if (withPhotos) getString(R.string.kmz_done_msg, points.size, photoCount, name)
+            else getString(R.string.kml_done_msg, points.size, name)
             AlertDialog.Builder(this@MainActivity)
-                .setTitle(R.string.kml_done_title)
-                .setMessage(getString(R.string.kml_done_msg, points.size, name))
-                .setPositiveButton(R.string.share) { _, _ -> shareKml(uri) }
+                .setTitle(if (withPhotos) R.string.kmz_done_title else R.string.kml_done_title)
+                .setMessage(msg)
+                .setPositiveButton(R.string.share) { _, _ -> shareFile(uri, mime) }
                 .setNeutralButton(R.string.reset_new_series) { _, _ -> confirmReset() }
                 .setNegativeButton(R.string.ok, null)
                 .show()
         }
     }
 
-    private fun saveKml(name: String, kml: String): Uri? {
-        val bytes = kml.toByteArray(Charsets.UTF_8)
+    private fun saveDownload(name: String, mime: String, bytes: ByteArray): Uri? {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val values = ContentValues().apply {
                 put(MediaStore.Downloads.DISPLAY_NAME, name)
-                put(MediaStore.Downloads.MIME_TYPE, "application/vnd.google-earth.kml+xml")
+                put(MediaStore.Downloads.MIME_TYPE, mime)
                 put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/KonumKamera")
             }
             val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return null
@@ -551,9 +660,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun shareKml(uri: Uri) {
+    private fun shareFile(uri: Uri, mime: String) {
         val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "application/vnd.google-earth.kml+xml"
+            type = mime
             putExtra(Intent.EXTRA_STREAM, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
